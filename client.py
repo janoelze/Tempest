@@ -19,6 +19,9 @@ class TempestClient:
         self.current_room = None
         self.messages = deque(maxlen=100)
         self.running = True
+        self.typing_users = set()  # Set of nicknames currently typing
+        self.last_keystroke = 0  # Timestamp of last keystroke
+        self.typing_sent = False  # Whether we've sent typing indicator
         
     def connect(self):
         try:
@@ -60,12 +63,25 @@ class TempestClient:
         elif msg.startswith("ENTERED"):
             room = msg.split(" ", 1)[1]
             self.current_room = room
+            self.typing_users.clear()  # Clear typing users when changing rooms
             self.messages.append(f"* Entered {room}")
         elif msg.startswith("USERS:"):
             self.messages.append(f"* {msg}")
         elif msg.startswith("GOODBYE"):
             self.messages.append("* Goodbye!")
             self.running = False
+        elif msg.startswith("TYPING "):
+            # Extract nickname from TYPING message (format: "TYPING nickname [avatar]")
+            parts = msg.split(" ", 2)
+            if len(parts) >= 2:
+                nickname = parts[1]
+                self.typing_users.add(nickname)
+        elif msg.startswith("TYPING-STOP "):
+            # Extract nickname from TYPING-STOP message (format: "TYPING-STOP nickname")
+            parts = msg.split(" ", 1)
+            if len(parts) >= 2:
+                nickname = parts[1]
+                self.typing_users.discard(nickname)
         else:
             self.messages.append(msg)
     
@@ -78,6 +94,10 @@ class TempestClient:
     
     def disconnect(self):
         self.running = False
+        # Send typing-stop if we were typing
+        if self.typing_sent and self.connected:
+            self.send_message("/typing-stop")
+            self.typing_sent = False
         if self.sock:
             self.sock.close()
 
@@ -95,10 +115,12 @@ def main_tui(stdscr, client):
     room_win = None
     line_win = None
     msg_win = None
+    typing_win = None
     input_win = None
     last_height, last_width = 0, 0
     input_buffer = ""
     last_msg_count = 0
+    last_typing_users = set()
     needs_full_refresh = True
     
     def safe_addstr(win, y, x, text, attr=0):
@@ -116,7 +138,7 @@ def main_tui(stdscr, client):
             # Recreate windows if terminal was resized
             if height != last_height or width != last_width:
                 # Minimum size check
-                if height < 6 or width < 20:
+                if height < 7 or width < 20:
                     stdscr.clear()
                     safe_addstr(stdscr, 0, 0, "Terminal too small!")
                     stdscr.refresh()
@@ -126,7 +148,8 @@ def main_tui(stdscr, client):
                 try:
                     room_win = curses.newwin(1, width, 0, 0)
                     line_win = curses.newwin(1, width, 1, 0)
-                    msg_win = curses.newwin(height-4, width, 2, 0)
+                    msg_win = curses.newwin(height-5, width, 2, 0)
+                    typing_win = curses.newwin(1, width, height-3, 0)
                     input_win = curses.newwin(2, width, height-2, 0)
                     msg_win.scrollok(True)
                     last_height, last_width = height, width
@@ -137,6 +160,7 @@ def main_tui(stdscr, client):
             # Check if we need to update UI elements
             msg_count = len(client.messages)
             messages_changed = msg_count != last_msg_count
+            typing_changed = client.typing_users != last_typing_users
             
             # Update room window (only every second to reduce flicker from time updates)
             if room_win and (needs_full_refresh or int(time.time()) % 1 == 0):
@@ -166,7 +190,7 @@ def main_tui(stdscr, client):
             if msg_win and (messages_changed or needs_full_refresh):
                 msg_win.clear()
                 msg_lines = list(client.messages)
-                msg_height = max(1, height-4)
+                msg_height = max(1, height-5)
                 start_line = max(0, len(msg_lines) - msg_height)
                 for i, msg in enumerate(msg_lines[start_line:]):
                     if i < msg_height:
@@ -174,6 +198,24 @@ def main_tui(stdscr, client):
                         safe_addstr(msg_win, i, 0, msg_text, curses.color_pair(1))
                 msg_win.refresh()
                 last_msg_count = msg_count
+            
+            # Update typing indicator window (when typing users change)
+            if typing_win and (typing_changed or needs_full_refresh):
+                typing_win.clear()
+                if client.typing_users:
+                    typing_list = sorted(list(client.typing_users))
+                    if len(typing_list) == 1:
+                        typing_text = f"◊ {typing_list[0]} is typing..."
+                    elif len(typing_list) == 2:
+                        typing_text = f"◊ {typing_list[0]} and {typing_list[1]} are typing..."
+                    else:
+                        typing_text = f"◊ {', '.join(typing_list[:-1])}, and {typing_list[-1]} are typing..."
+                    
+                    # Truncate if too long
+                    typing_display = typing_text[:max(1, width-1)]
+                    safe_addstr(typing_win, 0, 0, typing_display, curses.color_pair(1))
+                typing_win.refresh()
+                last_typing_users = client.typing_users.copy()
             
             # Always update input window to handle typing
             if input_win:
@@ -201,17 +243,41 @@ def main_tui(stdscr, client):
             try:
                 ch = stdscr.getch()
                 if ch == -1:
+                    # No input - check for typing timeout
+                    current_time = time.time()
+                    if client.typing_sent and current_time - client.last_keystroke > 2.0:
+                        # User stopped typing, send typing-stop
+                        if client.connected:
+                            client.send_message("/typing-stop")
+                        client.typing_sent = False
                     continue
                 elif ch == 10 or ch == 13:  # Enter
                     if input_buffer.strip():
+                        # Send typing-stop if we were typing
+                        if client.typing_sent and client.connected:
+                            client.send_message("/typing-stop")
+                        client.typing_sent = False
+                        # Send the actual message
                         client.send_message(input_buffer.strip())
                         input_buffer = ""
                 elif ch == 127 or ch == 8:  # Backspace
                     input_buffer = input_buffer[:-1]
+                    # Track keystroke for typing indicator
+                    if not client.typing_sent and client.connected:
+                        current_time = time.time()
+                        client.last_keystroke = current_time
+                        client.send_message("/typing")
+                        client.typing_sent = True
                 elif ch == 27:  # Escape
                     break
                 elif 32 <= ch <= 126:  # Printable characters
                     input_buffer += chr(ch)
+                    # Track keystroke for typing indicator
+                    if not client.typing_sent and client.connected:
+                        current_time = time.time()
+                        client.last_keystroke = current_time
+                        client.send_message("/typing")
+                        client.typing_sent = True
             except KeyboardInterrupt:
                 break
         except curses.error:

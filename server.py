@@ -135,6 +135,58 @@ After connecting and joining a room, simply type messages to chat!"""
             client_info = self.server_state.clients[conn]
             print(f"[DISCONNECT] {client_info.nickname} [{client_info.avatar}] disconnected gracefully")
         return True, "GOODBYE\n"
+    
+    def handle_typing(self, conn: socket.socket) -> Tuple[bool, str]:
+        """Handle /typing command"""
+        if conn not in self.server_state.clients:
+            return True, ""  # Silently ignore if not connected
+        
+        client_info = self.server_state.clients[conn]
+        if not client_info.room:
+            return True, ""  # Silently ignore if not in room
+        
+        # Update typing status
+        current_time = time.time()
+        room_typing = self.server_state.typing_users.setdefault(client_info.room, {})
+        
+        # Only broadcast if not already typing
+        if conn not in room_typing:
+            room_typing[conn] = current_time
+            # Broadcast to others in room
+            for other_conn in self.server_state.rooms.get(client_info.room, []):
+                if other_conn != conn:
+                    try:
+                        other_conn.sendall(f"TYPING {client_info.nickname} [{client_info.avatar}]\n".encode())
+                    except:
+                        pass
+        else:
+            # Update timestamp
+            room_typing[conn] = current_time
+        
+        return True, ""
+    
+    def handle_typing_stop(self, conn: socket.socket) -> Tuple[bool, str]:
+        """Handle /typing-stop command"""
+        if conn not in self.server_state.clients:
+            return True, ""  # Silently ignore if not connected
+        
+        client_info = self.server_state.clients[conn]
+        if not client_info.room:
+            return True, ""  # Silently ignore if not in room
+        
+        # Remove typing status
+        room_typing = self.server_state.typing_users.get(client_info.room, {})
+        if conn in room_typing:
+            del room_typing[conn]
+            # Broadcast to others in room
+            for other_conn in self.server_state.rooms.get(client_info.room, []):
+                if other_conn != conn:
+                    try:
+                        other_conn.sendall(f"TYPING-STOP {client_info.nickname}\n".encode())
+                    except:
+                        pass
+        
+        return True, ""
 
 class MessageProcessor:
     def __init__(self, server_state, command_handler):
@@ -143,6 +195,9 @@ class MessageProcessor:
     
     def process_line(self, conn: socket.socket, line: str, addr) -> bool:
         """Process a line of input from client. Returns True to continue, False to disconnect."""
+        if line.startswith("/") and not line.startswith("/typing"):
+            print(f"[DEBUG] Processing command: '{line}' from {addr}")
+        
         if len(line) > MAX_MESSAGE_LENGTH:
             try:
                 conn.sendall(f"Error: Message too long (max {MAX_MESSAGE_LENGTH} characters)\n".encode())
@@ -207,7 +262,26 @@ class MessageProcessor:
                 pass
             return False  # Disconnect
             
+        elif line.startswith("/typing-stop"):
+            success, response = self.command_handler.handle_typing_stop(conn)
+            if response:
+                try:
+                    conn.sendall(response.encode())
+                except:
+                    return False
+            return True
+            
+        elif line.startswith("/typing"):
+            success, response = self.command_handler.handle_typing(conn)
+            if response:
+                try:
+                    conn.sendall(response.encode())
+                except:
+                    return False
+            return True
+            
         elif line.startswith("/"):
+            print(f"[DEBUG] Unknown command received: '{line}' from {conn.getpeername()}")
             try:
                 conn.sendall("Unknown command. Type /help for available commands.\n".encode())
             except:
@@ -270,6 +344,18 @@ class MessageProcessor:
         if not message_content.strip():
             return True  # Skip empty messages
         
+        # Clear typing status when sending a message
+        room_typing = self.server_state.typing_users.get(client_info.room, {})
+        if conn in room_typing:
+            del room_typing[conn]
+            # Broadcast typing stop to others in room
+            for other_conn in self.server_state.rooms.get(client_info.room, []):
+                if other_conn != conn:
+                    try:
+                        other_conn.sendall(f"TYPING-STOP {client_info.nickname}\n".encode())
+                    except:
+                        pass
+        
         msg = f"[{client_info.avatar}] {client_info.nickname}: {message_content}"
         print(f"[MESSAGE] Room '{client_info.room}' - {client_info.nickname} [{client_info.avatar}]: {message_content}")
         
@@ -291,6 +377,7 @@ class ServerState:
         self.rooms: Dict[str, List[socket.socket]] = {}
         self.messages: Dict[str, List[str]] = {}
         self.rate_limits: Dict[socket.socket, Tuple[float, int]] = {}
+        self.typing_users: Dict[str, Dict[socket.socket, float]] = {}  # room -> {conn: timestamp}
         self.active_connections = 0
 
 # Global server state
@@ -423,11 +510,25 @@ def handle_client(conn, addr):
                 print(f"[CLEANUP] Cleaning up client {client_info.nickname} [{client_info.avatar}] from {addr}")
                 if client_info.room and conn in server_state.rooms.get(client_info.room, []):
                     server_state.rooms[client_info.room].remove(conn)
+                    
+                    # Clean up typing status
+                    room_typing = server_state.typing_users.get(client_info.room, {})
+                    if conn in room_typing:
+                        del room_typing[conn]
+                        # Broadcast typing stop to others in room
+                        for other_conn in server_state.rooms.get(client_info.room, []):
+                            try:
+                                other_conn.sendall(f"TYPING-STOP {client_info.nickname}\n".encode())
+                            except:
+                                pass
+                    
                     # Clean up empty rooms
                     if not server_state.rooms[client_info.room]:
                         del server_state.rooms[client_info.room]
                         if client_info.room in server_state.messages:
                             del server_state.messages[client_info.room]
+                        if client_info.room in server_state.typing_users:
+                            del server_state.typing_users[client_info.room]
                     else:
                         broadcast(client_info.room, f"** [{client_info.avatar}] {client_info.nickname} has left the room **")
                 del server_state.clients[conn]
@@ -515,7 +616,52 @@ def shutdown_tempest_servers():
     else:
         print("All Tempest servers have been shut down successfully.")
 
+def cleanup_stale_typing_indicators():
+    """Background task to clean up stale typing indicators"""
+    while True:
+        try:
+            current_time = time.time()
+            TYPING_TIMEOUT = 3.0  # 3 seconds timeout
+            
+            for room_name, room_typing in list(server_state.typing_users.items()):
+                stale_connections = []
+                
+                for conn, timestamp in list(room_typing.items()):
+                    if current_time - timestamp > TYPING_TIMEOUT:
+                        stale_connections.append(conn)
+                
+                # Clean up stale typing indicators
+                for conn in stale_connections:
+                    if conn in server_state.clients:
+                        client_info = server_state.clients[conn]
+                        print(f"[TYPING-CLEANUP] {client_info.nickname} typing timeout in room '{room_name}'")
+                        
+                        # Remove from typing list
+                        if conn in room_typing:
+                            del room_typing[conn]
+                        
+                        # Broadcast typing stop to others in room
+                        for other_conn in server_state.rooms.get(room_name, []):
+                            if other_conn != conn:
+                                try:
+                                    other_conn.sendall(f"TYPING-STOP {client_info.nickname}\n".encode())
+                                except:
+                                    pass
+                
+                # Clean up empty typing rooms
+                if not room_typing:
+                    del server_state.typing_users[room_name]
+            
+            time.sleep(1.0)  # Check every second
+        except Exception as e:
+            print(f"[ERROR] Typing cleanup error: {e}")
+            time.sleep(1.0)
+
 def start_server(host='localhost', port=1991):
+    # Start background typing cleanup task
+    typing_cleanup_thread = threading.Thread(target=cleanup_stale_typing_indicators, daemon=True)
+    typing_cleanup_thread.start()
+    
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         # Security configurations
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

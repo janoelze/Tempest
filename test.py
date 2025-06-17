@@ -480,6 +480,95 @@ class TempestTestSuite:
                 return len(response) > 0
             except Exception:
                 return False
+
+    def test_typing_indicator(self):
+        """Test typing indicator functionality"""
+        # Create two clients
+        with self.test_client() as client1, self.test_client() as client2:
+            try:
+                # Both clients connect
+                client1.recv(1024)  # welcome
+                client2.recv(1024)  # welcome
+                
+                client1.sendall(b'/connect alice\n')
+                time.sleep(0.1)
+                client1.recv(1024)  # welcome response
+                
+                client2.sendall(b'/connect bob\n')
+                time.sleep(0.1)
+                client2.recv(1024)  # welcome response
+                
+                # Both join the same room
+                client1.sendall(b'/room #testroom\n')
+                time.sleep(0.1)
+                client1.recv(1024)  # room join response
+                
+                client2.sendall(b'/room #testroom\n')
+                time.sleep(0.1)
+                client2.recv(1024)  # room join response
+                
+                # Clear any remaining messages (like "alice entered room")
+                try:
+                    client2.recv(1024)
+                except socket.timeout:
+                    pass
+                
+                # Test basic typing indicator
+                client1.sendall(b'/typing\n')
+                time.sleep(0.2)
+                
+                # Client2 should receive typing notification
+                try:
+                    response = client2.recv(1024).decode()
+                    if 'TYPING alice' not in response:
+                        return False
+                except socket.timeout:
+                    return False
+                
+                # Test typing stop
+                client1.sendall(b'/typing-stop\n')
+                time.sleep(0.2)
+                
+                try:
+                    response = client2.recv(1024).decode()
+                    if 'TYPING-STOP alice' not in response:
+                        return False
+                except socket.timeout:
+                    return False
+                
+                # Test that sending a message auto-stops typing
+                client1.sendall(b'/typing\n')
+                time.sleep(0.1)
+                
+                # Consume the typing notification
+                try:
+                    client2.recv(1024)
+                except socket.timeout:
+                    pass
+                
+                # Send a message (should auto-stop typing)
+                client1.sendall(b'Hello world\n')
+                time.sleep(0.2)
+                
+                # Should receive typing-stop and the message
+                typing_stop_found = False
+                message_found = False
+                
+                for _ in range(3):  # Try multiple times to catch both messages
+                    try:
+                        response = client2.recv(1024).decode()
+                        if 'TYPING-STOP alice' in response:
+                            typing_stop_found = True
+                        if 'alice: Hello world' in response:
+                            message_found = True
+                    except socket.timeout:
+                        break
+                
+                return typing_stop_found and message_found
+                
+            except Exception as e:
+                print(f"Typing indicator test error: {e}")
+                return False
             
     def run_all_tests(self):
         """Run the complete test suite"""
@@ -506,6 +595,7 @@ class TempestTestSuite:
                 ("Malformed Commands", self.test_malformed_commands),
                 ("Resource Exhaustion (Rooms)", self.test_resource_exhaustion_rooms),
                 ("Unicode Injection", self.test_unicode_injection),
+                ("Typing Indicator", self.test_typing_indicator),
             ]
             
             for test_name, test_func in tests:

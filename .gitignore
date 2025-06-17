@@ -14,3 +14,4 @@ shutdown.py
 .env
 deploy.py
 go-client
+debug.log
