@@ -1,1 +1,98 @@
-# Tempest
+TEMPEST
+
+SYNOPSIS
+     python server.py [port]
+     python client.py [host:port]
+
+DESCRIPTION
+     Tempest is a lightweight multi-room chat server and client inspired by
+     classic BBS systems and early IRC. The server maintains multiple chat
+     rooms with in-memory message history and real-time distribution.
+
+     The server runs on port 1991 by default and accepts multiple concurrent
+     TCP connections. Each client connects using a simple text-based protocol
+     and can join different chat rooms.
+
+INSTALLATION
+     Quick Install:
+             curl -fsSL https://raw.githubusercontent.com/janoelze/Tempest/main/install.sh | sh
+
+     Or with wget:
+             wget -qO- https://raw.githubusercontent.com/janoelze/Tempest/main/install.sh | sh
+
+     The installer downloads the latest version from GitHub and installs
+     system-wide commands. Requires curl or wget. Installs to ~/.local/bin
+     which may need to be added to your PATH.
+
+     Manual Installation:
+             git clone https://github.com/janoelze/Tempest.git
+             cd Tempest
+
+     No dependencies required - uses Python standard library only.
+     Compatible with Python 3.6+.
+
+CLIENT
+     python client.py [host:port]
+             Connect to a chat server. Default is localhost:1991.
+             Uses a curses-based terminal interface.
+
+SERVER
+     python server.py [port]
+             Start the chat server. Default port is 1991.
+
+COMMANDS
+     The following commands are available in the client:
+
+     /connect <nickname>
+             Set nickname and authenticate with server.
+
+     /room <name>
+             Join or create a chat room.
+
+     /who    List all users in the current room.
+
+     /help   Display available commands and usage.
+
+     /bye    Disconnect from server and exit.
+
+     Any other input is sent as a message to the current room.
+
+KEYBOARD CONTROLS
+     Enter   Send message or execute command
+     Escape  Quit client
+     Backspace
+             Delete previous character
+
+PROTOCOL
+     Tempest uses a line-based protocol over TCP. Messages are terminated with newlines and encoded as UTF-8.
+
+     Client to Server:
+             /connect alice
+             /room #lobby
+             hello everyone!
+
+     Server to Client:
+             WELCOME alice [avatar]
+             ENTERED #lobby
+             alice: hello everyone!
+
+EXAMPLES
+     Start server on default port:
+             python server.py
+
+     Start server on custom port:
+             python server.py 8080
+
+     Connect to local server:
+             python client.py
+
+     Connect to remote server:
+             python client.py chat.example.com:1991
+
+DECISHIONS
+     - No message persistence (memory only)
+     - No user authentication beyond nicknames
+     - No encryption, like god intended
+
+AUTHORS
+     Claude Code (95%), Jan Oelze (5%)
