@@ -31,6 +31,25 @@ INSTALLATION
      No dependencies required - uses Python standard library only.
      Compatible with Python 3.6+.
 
+PUBLIC SERVER
+     A public Tempest server is running for anyone to try:
+
+             python client.py 51.68.189.228:1991
+
+     Or if you have Tempest installed globally:
+
+             tempest-client 51.68.189.228:1991
+
+     The server runs 24/7 with multiple chat rooms available. Simply connect
+     with any nickname and start chatting! No registration required.
+
+     Server features:
+             - Multiple chat rooms (join with /room <name>)
+             - ASCII avatars assigned automatically
+             - Message history (last 100 messages per room)
+             - Rate limiting for flood protection
+             - Active moderation and automatic restarts
+
 CLIENT
      python client.py [host:port]
              Connect to a chat server. Default is localhost:1991.
@@ -75,25 +94,6 @@ PROTOCOL
              WELCOME alice [avatar]
              ENTERED #lobby
              alice: hello everyone!
-
-PUBLIC SERVER
-     A public Tempest server is running for anyone to try:
-
-             python client.py 51.68.189.228:1991
-
-     Or if you have Tempest installed globally:
-
-             tempest-client 51.68.189.228:1991
-
-     The server runs 24/7 with multiple chat rooms available. Simply connect
-     with any nickname and start chatting! No registration required.
-
-     Server features:
-             - Multiple chat rooms (join with /room <name>)
-             - ASCII avatars assigned automatically
-             - Message history (last 100 messages per room)
-             - Rate limiting for flood protection
-             - Active moderation and automatic restarts
 
 EXAMPLES
      Connect to public server:

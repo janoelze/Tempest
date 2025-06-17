@@ -1,0 +1,218 @@
+TEMPEST PROTOCOL SPECIFICATION
+===============================
+
+Version: 1.0
+Last Updated: 2025-06-17
+
+OVERVIEW
+--------
+Tempest uses a simple line-based text protocol over TCP. All communication
+is UTF-8 encoded with newline-terminated messages. The server runs on port
+1991 by default and supports multiple concurrent clients across different
+chat rooms.
+
+CONNECTION
+----------
+1. Client establishes TCP connection to server
+2. Server sends welcome message: "Welcome to Tempest Server! Use /connect <name> to begin.\n"
+3. Client must authenticate with /connect command before using other features
+
+PROTOCOL BASICS
+---------------
+- All messages are newline-terminated (\n)
+- UTF-8 encoding
+- Maximum message length: 500 characters
+- Commands are case-sensitive and start with "/"
+- Regular messages (non-commands) are sent to current room
+
+CLIENT COMMANDS
+===============
+
+/connect <nickname>
+-------------------
+Purpose: Authenticate with server and set nickname
+Prerequisites: None (first command after connection)
+Parameters: nickname (1-30 chars, alphanumeric + spaces, -, _, ., [], ())
+
+Request:  "/connect Alice\n"
+Success:  "WELCOME Alice [♠]\n"
+          "ROOMS:\n"
+          "  lobby: [♠] Alice, [♥] Bob\n"
+          "  general: [♦] Charlie\n"
+          (or "No active rooms. Use /room <name> to create one.\n")
+          
+Errors:   "Error: /connect requires a nickname\n"
+          "Error: Nickname too long (max 30 characters)\n" 
+          "Error: Nickname contains invalid characters\n"
+          "Error: Nickname already in use\n"
+
+Notes:    - Server assigns random ASCII avatar from predefined set
+          - Nickname validation: ^[a-zA-Z0-9\s\-_\.\[\]\(\)]+$
+          - After success, server sends current room list
+          - Duplicates checked case-insensitively
+
+/room <room_name>
+-----------------
+Purpose: Join or create a chat room
+Prerequisites: Must be connected (/connect)
+Parameters: room_name (1-50 chars, allows # prefix, alphanumeric + spaces, -, _, .)
+
+Request:  "/room lobby\n"
+Success:  "ENTERED lobby\n"
+          [Last 10 messages from room history]
+          "** [♠] Alice has entered the room **\n" (broadcast to room)
+
+Errors:   "You must /connect first.\n"
+          "Error: /room requires a room name\n"
+          "Error: Room name too long (max 50 characters)\n"
+          "Error: Room name contains invalid characters\n"
+          "Error: Server room limit reached (50 rooms)\n"
+
+Notes:    - Room validation: ^[#a-zA-Z0-9\s\-_\.]+$
+          - Automatically leaves previous room
+          - Empty rooms are deleted when last user leaves
+          - Broadcasts join message to all room members
+          - Sends recent message history (up to 10 messages)
+
+/who
+----
+Purpose: List users in current room
+Prerequisites: Must be connected and in a room
+Parameters: None
+
+Request:  "/who\n"
+Success:  "USERS: [♠] Alice, [♥] Bob, [♦] Charlie\n"
+
+Errors:   "You must /connect first.\n"  
+          "You must join a room first.\n"
+
+Notes:    - Shows nickname with ASCII avatar for each user
+          - Only shows users in current room
+          - Format: [avatar] nickname, [avatar] nickname, ...
+
+/help
+-----
+Purpose: Display available commands
+Prerequisites: None
+Parameters: None
+
+Request:  "/help\n"
+Success:  "Available commands:\n"
+          "/connect <name> - Set your nickname and connect to the server\n"
+          "/room <name>    - Join or create a chat room\n"
+          "/who            - List users in your current room\n"
+          "/help           - Show this help message\n"
+          "/bye            - Disconnect from the server\n"
+          "\n"
+          "After connecting and joining a room, simply type messages to chat!\n"
+
+/bye
+----
+Purpose: Gracefully disconnect from server
+Prerequisites: None
+Parameters: None
+
+Request:  "/bye\n"
+Success:  "GOODBYE\n"
+          [Connection closes]
+
+Notes:    - Server closes connection after sending response
+          - Removes user from room and broadcasts leave message
+          - Cleans up user data and rate limiting info
+
+Unknown Commands
+----------------
+Request:  "/unknown\n"
+Response: "Unknown command. Type /help for available commands.\n"
+
+CHAT MESSAGES
+=============
+
+Regular Message
+---------------
+Purpose: Send message to current room
+Prerequisites: Must be connected and in a room
+Parameters: message text (max 500 characters)
+
+Request:  "Hello everyone!\n"
+Broadcast: "[♠] Alice: Hello everyone!\n" (sent to all users in room)
+
+Errors:   "You must /connect first.\n"
+          "You must /room <name> first.\n"
+          "Error: Message too long (max 500 characters)\n"
+          "Rate limit exceeded. Please slow down.\n"
+
+Notes:    - Messages are broadcast to all users in the same room
+          - Sender does not receive their own message back
+          - Empty messages are ignored
+          - Messages are added to room history (max 100 per room)
+          - Rate limited: 20 messages per 60 seconds per connection
+
+SERVER RESPONSES
+================
+
+Connection Events
+-----------------
+New Connection:   "Welcome to Tempest Server! Use /connect <name> to begin.\n"
+Server Full:      "Server full. Please try again later.\n" [connection closes]
+User Joins Room:  "** [♠] Alice has entered the room **\n" (broadcast)
+User Leaves Room: "** [♠] Alice has left the room **\n" (broadcast)
+
+Message Format
+--------------
+Chat Message:     "[♠] Alice: Hello everyone!\n"
+System Message:   "** [♠] Alice has entered the room **\n"
+Command Response: "WELCOME Alice [♠]\n"
+Error Message:    "Error: Nickname already in use\n"
+
+SECURITY & LIMITS
+=================
+
+Connection Limits
+-----------------
+- Maximum clients: 100 concurrent connections
+- Maximum rooms: 50 active rooms
+- Connection timeout: 300 seconds (5 minutes)
+
+Input Validation
+----------------
+- Nickname: 1-30 chars, ^[a-zA-Z0-9\s\-_\.\[\]\(\)]+$
+- Room name: 1-50 chars, ^[#a-zA-Z0-9\s\-_\.]+$
+- Message: max 500 characters
+- All input is HTML-escaped to prevent injection
+
+Rate Limiting
+-------------
+- 20 messages per 60 seconds per connection
+- Applies only to chat messages, not commands
+- Sliding window implementation
+
+Message History
+---------------
+- 100 messages maximum per room
+- In-memory only (not persistent)
+- Last 10 messages sent when joining room
+
+INPUT SANITIZATION
+==================
+- Control characters removed (except newline/tab)
+- HTML entities escaped (&, <, >, ", ')
+- Input trimmed of leading/trailing whitespace
+- Invalid UTF-8 sequences ignored during decode
+
+ERROR HANDLING
+==============
+- Invalid commands return error message, connection stays open
+- Network errors or malformed data close connection
+- Rate limit violations send warning, connection stays open
+- Server full immediately closes connection
+- Timeout closes connection after 5 minutes of inactivity
+
+IMPLEMENTATION NOTES
+====================
+- Pure Python standard library (no external dependencies) 
+- Multi-threaded server (one thread per client)
+- All data stored in memory (no persistence)
+- ASCII avatars randomly assigned from Unicode symbol set
+- Graceful handling of broken connections
+- Automatic cleanup of empty rooms and disconnected users
