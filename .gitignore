@@ -13,3 +13,4 @@ shutdown.py
 .DS_Store
 .env
 deploy.py
+go-client
