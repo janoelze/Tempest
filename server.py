@@ -377,10 +377,10 @@ def broadcast(room, msg):
 def handle_client(conn, addr):
     nickname = None
     room = None
-    
+
     try:
-        # Set socket timeout
-        conn.settimeout(CONNECTION_TIMEOUT)
+        # Enable TCP keepalive to prevent network timeouts
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         
         # Check connection limit
         if server_state.active_connections >= MAX_CLIENTS:

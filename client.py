@@ -23,6 +23,8 @@ class TempestClient:
     def connect(self):
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Enable TCP keepalive to prevent network timeouts
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
             self.sock.connect((self.host, self.port))
             self.connected = True
             # Start receiving thread

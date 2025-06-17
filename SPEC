@@ -172,7 +172,7 @@ Connection Limits
 -----------------
 - Maximum clients: 100 concurrent connections
 - Maximum rooms: 50 active rooms
-- Connection timeout: 300 seconds (5 minutes)
+- Connection timeout: 1 hour
 
 Input Validation
 ----------------
