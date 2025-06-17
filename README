@@ -76,8 +76,30 @@ PROTOCOL
              ENTERED #lobby
              alice: hello everyone!
 
+PUBLIC SERVER
+     A public Tempest server is running for anyone to try:
+
+             python client.py 51.68.189.228:1991
+
+     Or if you have Tempest installed globally:
+
+             tempest-client 51.68.189.228:1991
+
+     The server runs 24/7 with multiple chat rooms available. Simply connect
+     with any nickname and start chatting! No registration required.
+
+     Server features:
+             - Multiple chat rooms (join with /room <name>)
+             - ASCII avatars assigned automatically
+             - Message history (last 100 messages per room)
+             - Rate limiting for flood protection
+             - Active moderation and automatic restarts
+
 EXAMPLES
-     Start server on default port:
+     Connect to public server:
+             python client.py 51.68.189.228:1991
+
+     Start your own server:
              python server.py
 
      Start server on custom port:
