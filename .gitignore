@@ -11,3 +11,5 @@ wheels/
 CLAUDE.md
 shutdown.py
 .DS_Store
+.env
+deploy.py
