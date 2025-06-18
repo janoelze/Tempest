@@ -5,13 +5,11 @@ SYNOPSIS
      python client.py [host:port]
 
 DESCRIPTION
-     Tempest is a lightweight multi-room chat server and client inspired by
-     classic BBS systems and early IRC. The server maintains multiple chat
-     rooms with in-memory message history and real-time distribution.
+     Tempest is a lightweight chat server and client inspired by
+     naive BBS systems. The server maintains multiple chat rooms
+     with in-memory message history and real-time distribution.
 
-     The server runs on port 1991 by default and accepts multiple concurrent
-     TCP connections. Each client connects using a simple text-based protocol
-     and can join different chat rooms.
+     A public server is available at 51.68.189.228:1991.
 
 INSTALLATION
      Quick Install:
