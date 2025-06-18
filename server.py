@@ -45,11 +45,26 @@ def get_version():
 
 SERVER_VERSION = get_version()
 
-# Decorative Unicode avatar symbols (non-emoji)
-ASCII_AVATARS = ['♠', '♣', '♥', '♦', '♪', '♫', '♯', '♭', '†', '‡', '§', '¶', '©', '®', '™',
-                 '←', '→', '↑', '↓', '↔', '↕', '↖', '↗', '↘', '↙', '∞', '∆', '∇', '∑', '∏',
-                 '√', '∴', '∵', '∀', '∃', '∈', '∋', '⊂', '⊃', '⊆', '⊇', '⊕', '⊗', '⊙', '⊥',
-                 '☐', '☑', '☒', '☓', '☆', '★', '☽', '☾', '⚡', '⚐', '⚑', '⚒', '⚓', '⚔', '⚖']
+# Terminal-compatible avatar symbols (widely supported Unicode)
+ASCII_AVATARS = [
+    # Card suits (universally supported)
+    '♠', '♣', '♥', '♦', 
+    # Stars and basic shapes
+    '★', '☆', 
+    # Basic symbols
+    '§', '¶', '©', '®', '™',
+    # Directional arrows (basic set)
+    '←', '→', '↑', '↓',
+    # Math symbols (common)
+    '∞', '√', '∑', '∏', '∆',
+    # Music notes
+    '♪', '♫', '♯', '♭',
+    # Religious/decorative
+    '†', '‡',
+    # Additional safe Unicode symbols
+    '◆', '◇', '○', '●', '□', '■', '△', '▲', '▽', '▼',
+    '◈', '◉', '◎', '⬟', '⬢', '⬡'
+]
 
 # Security configuration
 MAX_CLIENTS = 100
@@ -91,7 +106,7 @@ class CommandHandler:
         self.server_state.clients[conn] = ClientInfo(nickname, None, avatar)
         print(f"[CONNECT] Client connected as '{nickname}' with avatar [{avatar}]")
         
-        return True, f"WELCOME {nickname} [{avatar}] v{SERVER_VERSION}\n"
+        return True, f">>> Welcome {nickname} [{avatar}] (server v{SERVER_VERSION})\n"
     
     def handle_room(self, conn: socket.socket, args: str) -> Tuple[bool, str]:
         """Handle /room command"""
@@ -126,7 +141,7 @@ class CommandHandler:
         self.server_state.messages.setdefault(new_room, [])
         
         print(f"[ROOM] {client_info.nickname} [{client_info.avatar}] joined room '{new_room}'")
-        return True, f"ENTERED {new_room}\n"
+        return True, f">>> Entered room: {new_room}\n"
     
     def handle_who(self, conn: socket.socket) -> Tuple[bool, str]:
         """Handle /who command"""
@@ -144,7 +159,7 @@ class CommandHandler:
                 user_list.append(f"[{other_client.avatar}] {other_client.nickname}")
         
         print(f"[WHO] {client_info.nickname} requested user list for room '{client_info.room}': {user_list}")
-        return True, f"USERS: {', '.join(user_list)}\n"
+        return True, f">>> Users in room: {', '.join(user_list)}\n"
     
     def handle_help(self) -> Tuple[bool, str]:
         """Handle /help command"""
@@ -163,7 +178,7 @@ After connecting and joining a room, simply type messages to chat!"""
         if conn in self.server_state.clients:
             client_info = self.server_state.clients[conn]
             print(f"[DISCONNECT] {client_info.nickname} [{client_info.avatar}] disconnected gracefully")
-        return True, "GOODBYE\n"
+        return True, ">>> Goodbye!\n"
     
     def handle_typing(self, conn: socket.socket) -> Tuple[bool, str]:
         """Handle /typing command"""
@@ -264,7 +279,7 @@ class MessageProcessor:
                     except:
                         return False
                 # Broadcast join message
-                broadcast(client_info.room, f"** [{client_info.avatar}] {client_info.nickname} has entered the room **")
+                broadcast(client_info.room, f"--- [{client_info.avatar}] {client_info.nickname} has entered the room ---")
             return True
             
         elif line.startswith("/who"):
@@ -335,11 +350,11 @@ class MessageProcessor:
         
         try:
             if room_info:
-                conn.sendall("ROOMS:\n".encode())
+                conn.sendall(">>> Active rooms:\n".encode())
                 for info in room_info:
                     conn.sendall(f"  {info}\n".encode())
             else:
-                conn.sendall("No active rooms. Use /room <name> to create one.\n".encode())
+                conn.sendall(">>> No active rooms. Use /room <name> to create one.\n".encode())
         except:
             pass
     
@@ -505,7 +520,7 @@ def handle_client(conn, addr):
         
         server_state.active_connections += 1
         print(f"[CONNECT] New client connected from {addr} ({server_state.active_connections}/{MAX_CLIENTS})")
-        conn.sendall("Welcome to Tempest Server! Use /connect <name> to begin.\n".encode())
+        conn.sendall(">>> Welcome to Tempest Server! Use /connect <name> to begin.\n".encode())
     except Exception as e:
         print(f"[ERROR] Initial connection setup failed for {addr}: {e}")
         return
@@ -559,7 +574,7 @@ def handle_client(conn, addr):
                         if client_info.room in server_state.typing_users:
                             del server_state.typing_users[client_info.room]
                     else:
-                        broadcast(client_info.room, f"** [{client_info.avatar}] {client_info.nickname} has left the room **")
+                        broadcast(client_info.room, f"--- [{client_info.avatar}] {client_info.nickname} has left the room ---")
                 del server_state.clients[conn]
             else:
                 print(f"[CLEANUP] Anonymous client from {addr} disconnected")

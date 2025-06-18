@@ -7,7 +7,11 @@ import sys
 import time
 import random
 import argparse
+import locale
 from collections import deque
+
+# Set locale for proper Unicode support
+locale.setlocale(locale.LC_ALL, '')
 
 class TempestClient:
     def __init__(self, host, port):
@@ -42,7 +46,7 @@ class TempestClient:
         buffer = ""
         while self.connected and self.running:
             try:
-                data = self.sock.recv(1024).decode()
+                data = self.sock.recv(1024).decode('utf-8', errors='replace')
                 if not data:
                     break
                 buffer += data
@@ -55,30 +59,30 @@ class TempestClient:
         self.connected = False
     
     def handle_server_message(self, msg):
-        if msg.startswith("WELCOME"):
-            # Extract nickname and version from WELCOME message (format: "WELCOME nickname [avatar] vVERSION")
+        if msg.startswith(">>> Welcome"):
+            # Extract nickname and version from Welcome message
+            # Format: ">>> Welcome nickname [avatar] (server vVERSION)"
             parts = msg.split(" ")
-            if len(parts) >= 2:
-                self.nickname = parts[1]
+            if len(parts) >= 3:
+                self.nickname = parts[2]
             # Extract version if present
             for part in parts:
                 if part.startswith("v") and len(part) > 1:
-                    # Handle case where version might have newline attached
-                    version_part = part[1:]  # Remove the 'v' prefix
-                    # Split on newline and take first part
+                    version_part = part[1:].rstrip(')')
                     self.server_version = version_part.split('\n')[0]
                     break
-            self.messages.append(f"* {msg}")
-        elif msg.startswith("ENTERED"):
-            room = msg.split(" ", 1)[1]
+            self.messages.append((msg, "server"))
+        elif msg.startswith(">>> Entered room:"):
+            room = msg.split(">>> Entered room: ", 1)[1]
             self.current_room = room
             self.typing_users.clear()  # Clear typing users when changing rooms
-            self.messages.append(f"* Entered {room}")
-        elif msg.startswith("USERS:"):
-            self.messages.append(f"* {msg}")
-        elif msg.startswith("GOODBYE"):
-            self.messages.append("* Goodbye!")
-            self.running = False
+            self.messages.append((msg, "server"))
+        elif msg.startswith(">>>"):
+            # All other server messages
+            self.messages.append((msg, "server"))
+        elif msg.startswith("---") and msg.endswith("---"):
+            # Activity messages
+            self.messages.append((msg, "activity"))
         elif msg.startswith("TYPING "):
             # Extract nickname from TYPING message (format: "TYPING nickname [avatar]")
             parts = msg.split(" ", 2)
@@ -92,7 +96,8 @@ class TempestClient:
                 nickname = parts[1]
                 self.typing_users.discard(nickname)
         else:
-            self.messages.append(msg)
+            # Regular chat messages
+            self.messages.append((msg, "chat"))
     
     def send_message(self, msg):
         if self.connected:
@@ -118,7 +123,9 @@ def main_tui(stdscr, client):
     # Initialize color pairs - use default terminal colors
     curses.start_color()
     curses.use_default_colors()
-    curses.init_pair(1, -1, -1)  # Use terminal default foreground and background
+    curses.init_pair(1, -1, -1)  # Default colors
+    curses.init_pair(2, curses.COLOR_CYAN, -1)  # Server messages (cyan)
+    curses.init_pair(3, curses.COLOR_YELLOW, -1)  # Activity messages (yellow)
     
     # Initialize windows (will be recreated on resize)
     room_win = None
@@ -205,10 +212,24 @@ def main_tui(stdscr, client):
                 msg_lines = list(client.messages)
                 msg_height = max(1, height-5)
                 start_line = max(0, len(msg_lines) - msg_height)
-                for i, msg in enumerate(msg_lines[start_line:]):
+                for i, msg_data in enumerate(msg_lines[start_line:]):
                     if i < msg_height:
+                        # Handle both old string format and new tuple format
+                        if isinstance(msg_data, tuple):
+                            msg, msg_type = msg_data
+                            if msg_type == "server":
+                                color_pair = curses.color_pair(2)  # Cyan for server messages
+                            elif msg_type == "activity":
+                                color_pair = curses.color_pair(3)  # Yellow for activity messages
+                            else:
+                                color_pair = curses.color_pair(1)  # Default for chat messages
+                        else:
+                            # Backward compatibility for old string format
+                            msg = msg_data
+                            color_pair = curses.color_pair(1)
+                        
                         msg_text = msg[:max(1, width-1)]
-                        safe_addstr(msg_win, i, 0, msg_text, curses.color_pair(1))
+                        safe_addstr(msg_win, i, 0, msg_text, color_pair)
                 msg_win.refresh()
                 last_msg_count = msg_count
             

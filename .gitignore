@@ -15,3 +15,4 @@ shutdown.py
 deploy.py
 go-client
 debug.log
+tempest_remote_log*

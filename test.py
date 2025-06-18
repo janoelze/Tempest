@@ -182,7 +182,7 @@ class TempestTestSuite:
             time.sleep(0.1)
             room_response = client.recv(1024).decode()
             
-            if "ENTERED #testroom" not in room_response:
+            if ">>> Entered room: #testroom" not in room_response:
                 return False
                 
             # Send message
