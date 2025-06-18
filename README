@@ -15,18 +15,15 @@ DESCRIPTION
 
 INSTALLATION
      Quick Install:
-             curl -fsSL https://raw.githubusercontent.com/janoelze/Tempest/main/install.sh | sh
-
-     Or with wget:
-             wget -qO- https://raw.githubusercontent.com/janoelze/Tempest/main/install.sh | sh
+             $ curl -fsSL https://raw.githubusercontent.com/janoelze/Tempest/main/install.sh | sh
 
      The installer downloads the latest version from GitHub and installs
      system-wide commands. Requires curl or wget. Installs to ~/.local/bin
      which may need to be added to your PATH.
 
      Manual Installation:
-             git clone https://github.com/janoelze/Tempest.git
-             cd Tempest
+             $ git clone https://github.com/janoelze/Tempest.git
+             $ cd Tempest
 
      No dependencies required - uses Python standard library only.
      Compatible with Python 3.6+.
@@ -34,23 +31,14 @@ INSTALLATION
 PUBLIC SERVER
      A public Tempest server is running for anyone to try:
 
-             python client.py 51.68.189.228:1991
+             $ python client.py 51.68.189.228:1991
 
      Or if you have Tempest installed globally:
 
-             tempest 51.68.189.228:1991
+             $ tempest 51.68.189.228:1991
 
      The server runs 24/7 with multiple chat rooms available. Simply connect
      with any nickname and start chatting! No registration required.
-
-CLIENT
-     python client.py [host:port]
-             Connect to a chat server. Default is localhost:1991.
-             Uses a curses-based terminal interface.
-
-SERVER
-     python server.py [port]
-             Start the chat server. Default port is 1991.
 
 COMMANDS
      The following commands are available in the client:
@@ -69,40 +57,21 @@ COMMANDS
 
      Any other input is sent as a message to the current room.
 
-KEYBOARD CONTROLS
-     Enter   Send message or execute command
-     Escape  Quit client
-     Backspace
-             Delete previous character
-
 PROTOCOL
-     Tempest uses a line-based protocol over TCP. Messages are terminated with newlines and encoded as UTF-8.
-
-     Client to Server:
-             /connect alice
-             /room #lobby
-             hello everyone!
-
-     Server to Client:
-             WELCOME alice [avatar]
-             ENTERED #lobby
-             alice: hello everyone!
+     See the `SPEC` file for detailed protocol documentation.
 
 EXAMPLES
      Connect to public server:
-             python client.py 51.68.189.228:1991
+             $ python client.py 51.68.189.228:1991
 
      Start your own server:
-             python server.py
+             $ python server.py
 
      Start server on custom port:
-             python server.py 8080
-
-     Connect to local server:
-             python client.py
+             $ python server.py 8080
 
      Connect to remote server:
-             python client.py chat.example.com:1991
+             $ python client.py chat.example.com:1991
 
 DECISHIONS
      - No message persistence (memory only)
