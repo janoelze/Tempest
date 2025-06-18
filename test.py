@@ -481,6 +481,33 @@ class TempestTestSuite:
             except Exception:
                 return False
 
+    def test_version_display(self):
+        """Test that server sends version information in WELCOME message"""
+        with self.test_client() as client:
+            try:
+                client.recv(1024)  # welcome message
+                
+                # Connect user
+                client.sendall(b'/connect testuser\n')
+                time.sleep(0.1)
+                response = client.recv(1024).decode().strip()
+                
+                # Check if response contains version information
+                # Format should be: "WELCOME testuser [avatar] vVERSION"
+                if "WELCOME TESTUSER" not in response.upper():
+                    return False
+                
+                # Check for version pattern (v followed by characters, handling newlines)
+                import re
+                version_pattern = r'v[a-zA-Z0-9*]+(?:\n|$|\s)'
+                has_version = bool(re.search(version_pattern, response))
+                
+                return has_version
+                
+            except Exception as e:
+                print(f"Version test error: {e}")
+                return False
+
     def test_typing_indicator(self):
         """Test typing indicator functionality"""
         # Create two clients
@@ -582,6 +609,7 @@ class TempestTestSuite:
             # Run all tests
             tests = [
                 ("Basic Connection", self.test_basic_connection),
+                ("Version Display", self.test_version_display),
                 ("Room List on Connect", self.test_room_list_on_connect),
                 ("Help Command", self.test_help_command),
                 ("Room Operations", self.test_room_operations),

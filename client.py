@@ -17,6 +17,7 @@ class TempestClient:
         self.connected = False
         self.nickname = None
         self.current_room = None
+        self.server_version = None
         self.messages = deque(maxlen=100)
         self.running = True
         self.typing_users = set()  # Set of nicknames currently typing
@@ -55,10 +56,18 @@ class TempestClient:
     
     def handle_server_message(self, msg):
         if msg.startswith("WELCOME"):
-            # Extract nickname from WELCOME message (format: "WELCOME nickname [avatar]")
-            parts = msg.split(" ", 2)
+            # Extract nickname and version from WELCOME message (format: "WELCOME nickname [avatar] vVERSION")
+            parts = msg.split(" ")
             if len(parts) >= 2:
                 self.nickname = parts[1]
+            # Extract version if present
+            for part in parts:
+                if part.startswith("v") and len(part) > 1:
+                    # Handle case where version might have newline attached
+                    version_part = part[1:]  # Remove the 'v' prefix
+                    # Split on newline and take first part
+                    self.server_version = version_part.split('\n')[0]
+                    break
             self.messages.append(f"* {msg}")
         elif msg.startswith("ENTERED"):
             room = msg.split(" ", 1)[1]
@@ -167,7 +176,11 @@ def main_tui(stdscr, client):
                 room_win.clear()
                 room_display = f"Room: {client.current_room or 'Not connected'}"
                 current_time = time.strftime("%I:%M %p")
-                server_info = f"{client.host}:{client.port} · {current_time}"
+                version_info = f"v{client.server_version}" if client.server_version else ""
+                if version_info:
+                    server_info = f"{client.host}:{client.port} {version_info} · {current_time}"
+                else:
+                    server_info = f"{client.host}:{client.port} · {current_time}"
                 
                 # Add room name on left (ensure it fits)
                 room_text = room_display[:max(1, width-len(server_info)-2)]

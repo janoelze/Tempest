@@ -16,6 +16,35 @@ import subprocess
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
 
+def get_version():
+    """Get server version from git commit hash"""
+    try:
+        # Try to get git commit hash
+        result = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            commit_hash = result.stdout.strip()
+            # Try to check if working directory is clean
+            status_result = subprocess.run(['git', 'status', '--porcelain'], 
+                                         capture_output=True, text=True, timeout=5)
+            if status_result.returncode == 0:
+                is_dirty = bool(status_result.stdout.strip())
+                return f"{commit_hash}{'*' if is_dirty else ''}"
+            return commit_hash
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    
+    # Fallback: try to read from deployed version file
+    try:
+        with open('.version', 'r') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        pass
+    
+    return "unknown"
+
+SERVER_VERSION = get_version()
+
 # Decorative Unicode avatar symbols (non-emoji)
 ASCII_AVATARS = ['♠', '♣', '♥', '♦', '♪', '♫', '♯', '♭', '†', '‡', '§', '¶', '©', '®', '™',
                  '←', '→', '↑', '↓', '↔', '↕', '↖', '↗', '↘', '↙', '∞', '∆', '∇', '∑', '∏',
@@ -62,7 +91,7 @@ class CommandHandler:
         self.server_state.clients[conn] = ClientInfo(nickname, None, avatar)
         print(f"[CONNECT] Client connected as '{nickname}' with avatar [{avatar}]")
         
-        return True, f"WELCOME {nickname} [{avatar}]\n"
+        return True, f"WELCOME {nickname} [{avatar}] v{SERVER_VERSION}\n"
     
     def handle_room(self, conn: socket.socket, args: str) -> Tuple[bool, str]:
         """Handle /room command"""
